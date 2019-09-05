@@ -2,7 +2,7 @@ const express = require('express');
 
 const userDb = require('./userDb.js');
 const router = express.Router();
-const postDb = require('../posts/postDb.js');
+//const postDb = require('../posts/postDb.js');
 // get all users
 router.get('/', (req, res) => {
   userDb
@@ -11,6 +11,7 @@ router.get('/', (req, res) => {
       res.status(200).json(users);
     })
     .catch(error => {
+      console.log(err);
       res
         .status(500)
         .json({ error: 'The users information could not be retrieved.' });
@@ -18,143 +19,96 @@ router.get('/', (req, res) => {
 });
 
 // get specific user
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  userDb
-    .getById(id)
-    .then(user => {
-      if (user) {
-        res.status(200).json(user);
-      } else {
-        res
-          .status(404)
-          .json({ error: 'The user with the specified ID does not exist' });
-      }
-    })
-    .catch(error => {
-      res
-        .status(500)
-        .json({ message: 'The user information could not be retrieved' });
-    });
+router.get('/:id', validateUserId, (req, res) => {
+  res.status(200).json(req.user);
 });
 
 // delete user
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', validateUserId, (req, res) => {
   const { id } = req.params;
-
   userDb
     .remove(id)
-    .then(deleted => {
-      if (deleted) {
-        res.status(200).json({ deleted });
-      } else {
-        res
-          .status(404)
-          .json({ error: 'The user with the specified ID does not exist' });
-      }
+    .then(() => {
+      res.status(204).end();
     })
     .catch(err => {
-      res.status(500).json({ error: "the user couldn't be removed" });
+      res.status(500).json({ error: 'Error deleting user' });
     });
 });
 
 // edit user
 
-router.put('/:id', (req, res) => {
+router.put('/:id', validateUserId, (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
-  if (!name) {
-    res.status(400).json({ error: 'Please provide name for the user' });
-  }
   userDb
-    .update(id, name)
-    .then(updated => {
-      if (updated) {
-        userDb
-          .getById(id)
-          .then(user => res.status(200).json(user))
-          .catch(err => {
-            res
-              .status(500)
-              .json({ error: 'The user information could not be modified' });
-          });
-      } else {
-        res
-          .status(404)
-          .json({ error: 'The user with the specified ID does not exist' });
-      }
+    .update(id, { name })
+    .then(() => {
+      userDb
+        .getById(id)
+        .then(user => res.status(200).json(user))
+        .catch(err => {
+          console.log(err);
+          res.status(500).json({ error: 'Error getting user' });
+        });
     })
     .catch(err => {
-      res
-        .status(500)
-        .json({ error: 'The user information could not be modified' });
+      console.log(err);
+      res.status(500).json({ error: 'Error getting updating user' });
     });
 });
 
-router.get('/:id/posts', (req, res) => {
+router.get('/:id/posts', validateUserId, (req, res) => {
   const { id } = req.params;
-
-  if (!id) {
-    res
-      .status(404)
-      .json({ error: 'The user with the specified ID does not exist.' });
-  } else {
-    postDb
-      .getUserPosts(id)
-      .then(posts => {
-        res.status(200).json(comments);
-      })
-      .catch(err => {
-        res
-          .status(500)
-          .json({ error: 'The posts information could not be retrieved.' });
-      });
-  }
+  userDb
+    .getUserPosts(id)
+    .then(posts => {
+      res.status(200).json(posts);
+    })
+    .catch(err => {
+      console.log(err);
+      res.status(500).json({ error: "error getting user's posts" });
+    });
 });
 
-// router.post('/:id/posts', (req, res) => {
-//   const { post_id } = req.params;
-//   const { text } = req.body;
+router.post('/', validateUser, (req, res) => {
+  const user = req.body;
+  userDb
+    .insert(user)
+    .then(user => {
+      res.status(201).json(user);
+    })
+    .catch(err => {
+      console.log(err);
+      res.status(500).json({ error: 'Error inserting user' });
+    });
+});
 
-//   if (text === '' || typeof text !== 'string') {
-//     return res
-//       .status(400)
-//       .json({ error: 'Please provide text for the post.' });
-//   }
+// custom middleware
 
-//   postDb.insert({ text, post_id })
-//     .then(({ id: comment_id }) => {
-//       Posts.findCommentById(comment_id)
-//         .then(([comment]) => {
-//           if (comment) {
-//             res.status(200).json(comment);
-//           } else {
-//             res
-//               .status(404)
-//               .json({
-//                 error: 'The post with the specified ID does not exist.'
-//               });
-//           }
-//         })
-//         .catch(err => {
-//           res
-//             .status(500)
-//             .json({ error: 'The posts information could not be retrieved.' });
-//         });
-//     })
-//     .catch(err => {
-//       res.status(500).json({
-//         error: 'There was an error while saving the comment to the database'
-//       });
-//     });
-// });
+function validateUserId(req, res, next) {
+  const { id } = req.params;
+  userDb.getById(id).then(user => {
+    if (user) {
+      req.user = user;
+      next();
+    } else {
+      res.status(404).json({ error: 'User with id does not exist' });
+    }
+  });
+}
 
-//custom middleware
-
-function validateUserId(req, res, next) {}
-
-function validateUser(req, res, next) {}
+function validateUser(req, res, next) {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  if (typeof name !== 'string') {
+    return res.status(400).json({ error: 'name must be a string' });
+  }
+  next();
+}
 
 function validatePost(req, res, next) {}
 
