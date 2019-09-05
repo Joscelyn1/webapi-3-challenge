@@ -2,7 +2,7 @@ const express = require('express');
 
 const userDb = require('./userDb.js');
 const router = express.Router();
-//const postDb = require('../posts/postDb.js');
+const postDb = require('../posts/postDb.js');
 // get all users
 router.get('/', (req, res) => {
   userDb
@@ -85,6 +85,19 @@ router.post('/', validateUser, (req, res) => {
     });
 });
 
+router.post('/:id/posts', validateUserId, validatePost, (req, res) => {
+  const post = req.body;
+  postDb
+    .insert(post)
+    .then(post => {
+      res.status(201).json(post);
+    })
+    .catch(err => {
+      console.log(err);
+      res.status(500).json({ error: 'Error adding the post' });
+    });
+});
+
 // custom middleware
 
 function validateUserId(req, res, next) {
@@ -110,6 +123,19 @@ function validateUser(req, res, next) {
   next();
 }
 
-function validatePost(req, res, next) {}
+function validatePost(req, res, next) {
+  const { id: user_id } = req.params;
+  const { text } = req.body;
+
+  if (!req.body) {
+    return res.status(400).json({ error: 'post requires a body' });
+  }
+  if (!text) {
+    return res.status(400).json({ error: 'post requires some text' });
+  }
+
+  req.body = { user_id, text };
+  next();
+}
 
 module.exports = router;
